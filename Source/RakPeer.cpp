@@ -177,6 +177,9 @@ RakPeer::RakPeer()
 	maximumIncomingConnections = 0;
 	maximumNumberOfPeers = 0;
 	activePeersCount = 0;
+#ifndef RAKNET_BUILD_FOR_CLIENT
+	reservedSlots = 0;
+#endif
 	//remoteSystemListSize=0;
 	remoteSystemList = 0;
 	bytesSentPerSecond = bytesReceivedPerSecond = 0;
@@ -292,6 +295,9 @@ bool RakPeer::Initialize( unsigned short maxConnections, unsigned short localPor
 		// Clear the lookup table.  Safe to call from the user thread since the network thread is now stopped
 		remoteSystemLookup.Clear();
 		activePeersCount = 0;
+#ifndef RAKNET_BUILD_FOR_CLIENT
+	reservedSlots = 0;
+#endif
 	}
 
 	// For histogram statistics
@@ -698,6 +704,9 @@ void RakPeer::Disconnect( unsigned int blockDuration, unsigned char orderingChan
 	maximumNumberOfPeers = 0;
 	//remoteSystemListSize = 0;
 	activePeersCount = 0;
+#ifndef RAKNET_BUILD_FOR_CLIENT
+	reservedSlots = 0;
+#endif
 
 	// Free any packets the user didn't deallocate
 	Packet **packet;
@@ -2520,6 +2529,13 @@ RakNetStatisticsStruct * RakPeer::GetStatistics( const PlayerID playerId )
 	return 0;
 }
 
+#ifndef RAKNET_BUILD_FOR_CLIENT
+void RakPeer::ReserveSlots(unsigned short count)
+{
+	reservedSlots = count;
+}
+#endif
+
 // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 /*
 void RakPeer::RemoveFromRequestedConnectionsList( const PlayerID playerId )
@@ -2828,8 +2844,14 @@ RakPeer::RemoteSystemStruct * RakPeer::AssignPlayerIDToRemoteSystemList( const P
 	RakAssert(playerId!=UNASSIGNED_PLAYER_ID);
 
 	// Check if maximum number of peers is reached .. without looping them.
-	if (activePeersCount == maximumNumberOfPeers)
+#ifndef RAKNET_BUILD_FOR_CLIENT
+	if (activePeersCount >= maximumNumberOfPeers - reservedSlots)
+#else
+	if (activePeersCount >= maximumNumberOfPeers)
+#endif
+	{
 		return 0;
+	}
 
 	// remoteSystemList in user thread
 	for ( i = 0; i < maximumNumberOfPeers; i++ )
@@ -4653,7 +4675,7 @@ namespace RakNet
 				}
 
 				// Taken from SA-MP 0.3.7 changes
-				if ((remoteSystem->connectMode == RemoteSystemStruct::DISCONNECT_ASAP || remoteSystem->connectMode == RemoteSystemStruct::DISCONNECT_ASAP_SILENTLY) && timeMS - remoteSystem->lastReliableSend > 20000)
+				if ((remoteSystem->connectMode == RemoteSystemStruct::DISCONNECT_ASAP || remoteSystem->connectMode == RemoteSystemStruct::DISCONNECT_ASAP_SILENTLY) && timeMS > remoteSystem->connectionTime && timeMS - remoteSystem->lastReliableSend > 20000)
 				{
 					packet = AllocPacket(sizeof(char));
 					packet->data[0] = ID_CONNECTION_LOST; // DeadConnection
@@ -4663,7 +4685,7 @@ namespace RakNet
 
 					AddPacketToProducer(packet);
 
-					CloseConnectionInternal(playerId, false, true, 0);
+					CloseConnectionInternal(playerId, false, true, 2);
 					continue;
 				}
 
@@ -5177,19 +5199,19 @@ namespace RakNet
 							}
 						}
 #endif
-						else
+						else if (data[0] == (unsigned char)ID_CONNECTION_LOST)
 						{
-							if (data[0]>=(unsigned char)ID_RPC)
-							{
-								packet=AllocPacket(byteSize, data);
-								packet->bitSize = bitSize;
-								packet->playerId = playerId;
-								packet->playerIndex = ( PlayerIndex ) remoteSystemIndex;
-								AddPacketToProducer(packet);					
-							}
-							//else
-								// Some internal type got returned to the user?
-								//RakAssert(0);
+							// Do nothing - packet is received through network.
+							// This shouldn't happen as it's an internal packet.
+							delete[] data;
+						}
+						else if (data[0] >= (unsigned char)ID_RPC)
+						{
+							packet = AllocPacket(byteSize, data);
+							packet->bitSize = bitSize;
+							packet->playerId = playerId;
+							packet->playerIndex = (PlayerIndex)remoteSystemIndex;
+							AddPacketToProducer(packet);
 						}
 					}
 

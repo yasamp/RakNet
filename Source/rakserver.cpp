@@ -160,7 +160,7 @@ Packet* RakServer::Receive( void )
 
 void RakServer::Kick(const PlayerID playerId)
 {
-    RakPeer::NotifyAndFlagForDisconnect(playerId, false, 0);
+    RakPeer::NotifyAndFlagForDisconnect(playerId, false, 2);
 }
 
 void RakServer::DeallocatePacket( Packet *packet )
@@ -460,6 +460,11 @@ RakPeer::RemoteSystemStruct* RakServer::GetRemoteSystemFromPlayerID(const Player
 }
 
 #ifndef RAKNET_BUILD_FOR_CLIENT
+void RakServer::ReserveSlots(unsigned short count)
+{
+		RakPeer::ReserveSlots(count);
+}
+
 SAMPRakNet::RemoteSystemData RakServer::GetSAMPDataFromPlayerID(const PlayerID playerId)
 {
 	RemoteSystemStruct* remoteSystem = RakPeer::GetRemoteSystemFromPlayerID(playerId, false, false);
